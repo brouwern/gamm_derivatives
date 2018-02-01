@@ -3,6 +3,8 @@ title: "Calculate Deriviate of GAMM Smoothed Line"
 author: "Nathan Brouwer"
 date: "January 30, 2018"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -11,29 +13,55 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Preliminaries
 
+### Load packages
+
+```{r}
+library(nlme)    #required by mgcv
+library(mgcv)    #for gam
+
+library(ggplot2) #plotting
+library(cowplot) #ggplot extenion
+```
+
+
 ### Load data
+
+#### Load raw data
+
+Raw data has measurements every 30 minutes.
+
 ```{r}
 par1 <- read.csv("./data/garden_sensor_data_cleaned.csv")
 ```
 
 
-### Calculate derivative
-rm(list = ls())
-setwd("C:/Users/lisanjie2/Dropbox/0_Brouwer_in_prep/Heberling_2016/Heberling_2016_final_workup/Nathans_final_stuff")
-
-### Load raw data
-
-
-### Load garden data that has been summarized by mid-day mean
-par.mean <- read.csv("garden_sensor_data_10amTo2pm_mean.csv")
+#### Load summarized data
+Load garden data that has been summarized by mid-day mean for plotting exploratory graph.
+```{r}
+par.mean <- read.csv("./data/garden_sensor_data_10amTo2pm_mean.csv")
+```
 
 
 
-pdf("Appendix_PPFD_garden_sensor_daily_means.pdf",
-    width=6,height=4)
+## Exploratory plots
 
-### Plot midday mean vs. Julian w/error bars
-library(ggplot2)
+### Plot raw data
+
+```{r}
+qplot(y = PAR,
+        x = (julian),
+          geom = c("point","smooth"),
+          data = par1,
+      color = hour)  +
+  theme_bw() +
+   xlab("Date")
+```
+
+
+### Plot daily means
+
+We can fit a LOESS smoother using geom = "smooth" or stat_smooth().
+```{r}
 qplot(y = mean,
         x = (julian),
           geom = c("point","smooth"),
@@ -42,83 +70,204 @@ qplot(y = mean,
                        ymax = mean+2*SE))) +
   theme_bw() + ylab("Mid-day mean PPFD") +
    xlab("Date")
+```
 
-dev.off()
+ggplot is very flexible and can actually call the mgcv library and fit a GAM on the fly.  Note that I removed "smooth" from the call to geom = within qplot and added stat_smooth() at the end.  The default for stat_smooth() is LOESS so we change it to GAM and specify the formula.  (Note that without the "formula = y ~ s(x)" the default for stat_smooth(), even with method = "gam", is to fit a linear regression.)
+
+```{r}
+qplot(y = mean,
+        x = (julian),
+          geom = c("point"),
+          data = par.mean) +
+    geom_errorbar((aes(ymin = mean-2*SE, 
+                       ymax = mean+2*SE)))  +
+  stat_smooth(method = "gam", formula = y ~ s(x), size = 1)
+```
+
+For more information on stat_smooth() see https://stats.idre.ucla.edu/r/faq/how-can-i-explore-different-smooths-in-ggplot2/
+
+## Model Summaried Data w/GAM
+
+I use Generalized Addidive Model (GAM; Wood 2006) to model how PAR decreases with time. This could be fanicer by adding autocorrelation (eg AR1) to the errors but I don't think that accomplished anything really.
+
+Also, instead of means for 10 AM to 2 PM we could directly model the raw data with random effects with a GAMM (Generalized Additive Mixed Model), but that wouldn't add anything to the anlysis.
 
 
 
-######################
-### Model Data w/GAM
-######################
+### Run the GAM
 
-### Use GAM to model how PAR decreases w/ time
-### 
-### This could be fanicer by adding autocorrelation to the errors
-### but I don't think that accomplished anything really
-### Also, instead of means for 10am to 2 PM we could model
-### raw data w/ random effects with a gamm, but that wouldn't
-### add anything to the anlysis.
-
-library(mgcv) #mgcv 1.8-12
-# Wood, S.N. (2006) Generalized Additive Models:
-#   An Introduction with R. Chapman and Hall/CRC.
-
-
-#Run gam 
+The notation s(julian) tells the model to build a smoother for the covariation "julian".
+```{r}
 gam1 <- gam(mean ~ s(julian), data = par.mean)
 
-par(mfrow = c(1,1), mar = c(2,2,2,2)+2)
+```
 
-#extract predicted values from gam
+The mgcv library has some basic plotting functionality using the plot() function.  See ?plot.gam for the full details.  The band around the fitted line is the standard error (SE).
+
+```{r}
+plot(gam1)
+```
+
+
+### Extract predicted values from fitted GAM
+
+Just like for a regular regression model fitted using the lm() function we can get predictions from a model fit with gam(). These predictions essentially describe the fitted line we plot.  See ?predict.gam for details, though note that we can just call the predict() function, not predict.gam() to get the prediction.
+
+```{r}
 preds.out <- predict(gam1)
+```
+
+
+I'll add these to my original dataframe
+```{r}
 par.mean$preds <- preds.out
+```
 
 
-
-
-####################################################################
 ## Differentiating the smooths in a model (with CIs for derivatives)
-####################################################################
 
-#Calculate derivative of gam smooth
-#   see ?predict.gam for original code 
-#   following code notes are copied from there with some
-#   additional notes by NLB
+I can't remember whether I discovered that you could calculate derivatives for GAMs by reading the help file then discovered this guy's blog, or found the blog first (I'd prefer the former).
 
-## "evaluate derivatives of smooths with associated standard 
-## errors, by finite differencing..."
+From the Bottom of The Heap Blog by Gavin Simpson who ask the questions "How do we identify where in the series the data are changing?"
 
-# set up values to make predictions accorss
+Original
+https://www.fromthebottomoftheheap.net/2014/06/16/simultaneous-confidence-intervals-for-derivatives/
+
+Update on the simultaneous CI issue
+https://www.fromthebottomoftheheap.net/2016/12/15/simultaneous-interval-revisited/
+
+Andd on the GAM issue
+https://www.fromthebottomoftheheap.net/2017/03/21/simultaneous-intervals-for-derivatives-of-smooths/
+
+He now has a function to do this
+https://gist.github.com/gavinsimpson/e73f011fdaaab4bb5a30
+
+
+THe function can be accessed by downloading the tsgam package from GitHub, or by copying and pasting the function directly into an R file.
+```{r}
+devtools::install_github("gavinsimpson/tsgam")
+
+```
+
+
+Function is called "Deriv"
+```{r}
+#https://gist.github.com/gavinsimpson/e73f011fdaaab4bb5a30
+source("./R/Deriv.R")
+```
+
+The derivative function has the key arguements (with their defaults):
+
+* mod: the model
+* eps = 1e-7: "the value of the finite difference used to approximate the first derivative."
+* newdata: new dataframe over which to make predictions; the function can also build a dataframe for prediction on the fly.  The size of this prediction dataframe is determien by the argument n (see below)
+* n = 200: "if newdata is missing the original data can be reconstructed from model and then n controls the number of values over the range of each covariate with which to populate newdata"
+* term: the focal term in the model, eg "s(x)"
+
+See also
+https://stackoverflow.com/questions/14207250/determining-derivatives-from-gam-smooth-object
+
+
+
+```{r}
+deriv.from.fderiv <- fderiv(gam1)
+
+```
+
+He's linked his confidence interval functionality directly to R's confint() function
+
+```{r}
+CIs.from.confint <- confint(deriv.from.fderiv, type = "simultaneous")
+```
+
+
+```{r}
+out <- cbind(-1*deriv.from.fderiv$eval,
+             CIs.from.confint)
+```
+
+
+```{r}
+ggplot(data = out,
+       aes(x = julian, y = est)) +
+    geom_hline(aes(yintercept = 0)) +
+    geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+    geom_line() +
+    scale_x_reverse() +
+    labs(y = "First derivative", x = "Julian")
+```
+
+
+
+
+
+
+Calculate derivative of the GAM smooth
+
+* see ?predict.gam for original code 
+* the following code notes are copied from there with some additional notes by NLB
+
+"evaluate derivatives of smooths with associated standard errors, by finite differencing..."
+
+## set up values to make predictions accross
+
+When making predictions using a fitted model the default is to use the original dataframe.  This 
+
+```{r}
 x.mesh <- seq(min(par.mean$julian),
               max(par.mean$julian),
               length=dim(par.mean)[1]) ## where to evaluate derivatives
+```
+
+
+```{r}
+
+
 newd <- data.frame(julian = x.mesh)
 X0 <- predict(gam1,newd,type="lpmatrix") 
+```
 
 
-## set up value to perturb data by to approx the differentiation
-## "finite difference interval to approximate differenatiation"
+
+
+set up value to perturb data by to approx the differentiation
+"finite difference interval to approximate differenatiation"
+```{r}
 eps <- 1e-7 
+```
 
-## shift the evaluation mesh
+
+Shift the evaluation mesh
+```{r}
 x.mesh <- x.mesh + eps 
 
-#make new data w/shifted values
-#   key to this method is the use of 
-#   type="lpmatrix" which 
-#   out puts the coefficients for the udnerlying
-#   GAM equations instead of actual predictiosn
+```
+
+
+make new data w/shifted values
+
+key to this method is the use of type="lpmatrix" which outputs the coefficients for the underlying GAM equations instead of actual predictions
+```{r}
 newd <- data.frame(julian = x.mesh)
 X1 <- predict(gam1,newd,type="lpmatrix")
+```
 
 
-#look at output of predicatio - note that there are 9 columns
-# produced, not that 1, b/c the 9 underlying game equations are
-# being called up
+
+Look at output of predication - note that there are 9 columns produced, not that 1, b/c the 9 underlying game equations are being called up
+```{r}
 temp <- round(X1,2)
 colnames(temp) <- gsub("julian","j",colnames(temp))
 colnames(temp) <- gsub("Intercept","In",colnames(temp))
+```
+
+
+```{r}
 head(temp)
+```
+
+From original model:
+
 #    (Int) s(j).1 s(j).2 s(j).3 s(j).4 s(j).5 s(j).6 s(j).7 s(j).8 s(j).9
 # 1    1  -1.11  -0.26   1.39  -0.35   1.51   0.41  -1.57  -1.12  -1.71
 # 2    1  -1.11  -0.24   1.39  -0.33   1.51   0.39  -1.57  -1.08  -1.67
@@ -128,49 +277,54 @@ head(temp)
 # 6    1  -1.11  -0.19   1.38  -0.26   1.48   0.29  -1.52  -0.90  -1.50
 
 
-#divide perturbed and original coefficients 
+Divide perturbed and original coefficients 
+```{r}
 Xp <- (X1-X0)/eps ## "maps coefficients to (fd approx.) derivatives" (?)
+```
+
 
 
 ### Carry out differentiation
-#  the value "9" is used b/c that "basis" for the GAM has 9 terms
-summary(gam1)
 
+The value "9" is used b/c that "basis" for the GAM has 9 terms
+```{r}
+summary(gam1)
+```
+
+
+```{r}
 Xi <- Xp*0 #empty dataframe
+```
+
+
 
 #Xi[,(i-1)*9+1:9+1] <- Xp[,(i-1)*9+1:9+1] ## Xi%*%coef(b) = smooth deriv i
+```{r}
 Xi[,1:9+1] <- Xp[,1:9+1] ## Xi%*%coef(b) = smooth deriv i
 df <- Xi%*%coef(gam1)                ##  smooth derivative 
 df.sd <- rowSums(Xi%*%gam1$Vp*Xi)^.5 ## cheap diag(Xi%*%b$Vp%*%t(Xi))^.5
+```
 
 
 
-
-
-
-#####################################
 ### Plot derivative & CI for line ###
-#####################################
-### Set up to send output to PDF
-pdf("Appendix_PPFD_garden_sensor_derivative.pdf",
-    width=6,height=4)
 
-par(mar = c(4,4,1,8.5),
-    xpd=TRUE)
-
-#xpd=TRUE prevents clipping of legend when plotted outside of figure
-#http://stackoverflow.com/questions/3932038/plot-a-legend-outside-of-the-plotting-area-in-base-graphics
+#### Main plot
+```{r}
 plot(x.mesh,df,
      type="l",
      ylim=range(c(df+2*df.sd,df-2*df.sd)),
      xlab = "Julian Date",
      ylab = "Derivative")
+```
 
-#Plot 95%CI of derivative
+
+#### Plot 95%CI of derivative
+```{r}
 lines(x.mesh,df+2*df.sd,lty=2);lines(x.mesh,df-2*df.sd,lty=2)
+```
 
-
-
+```{r}
 leg <- c("GAM\nderivative\n",
          "95% CI",
          "Deriv = 0",
@@ -185,15 +339,20 @@ legend("topright",bty = "n",#cex = 0.9,
        cex = 0.9,
        lty = c(1,2,1,lty.x,lty.x +1),
        col = c(1,1,2,col.x,col.x+1),inset=c(-0.385,0))
+```
 
 
-#Reset xpd to keep colored lines w/in plot
-par(    xpd=F)
 
-#plot deriv = 0 horizontal line 
+```{r}
 abline(h = 0, col = 2)
 
+```
+
+
+#plot deriv = 0 horizontal line 
+
 #plot 1st day when deriv = 0
+```{r}
 day.deriv.0 <- x.mesh[which(df> 0)[1]]
 abline(v = day.deriv.0, col =col.x, lty = lty.x)
 
@@ -201,7 +360,10 @@ text(x = day.deriv.0,y = -30,
      col = 3,
      labels = round(day.deriv.0,0),
      pos = 4)
+```
 
+
+```{r}
 date1 <-paste(par1[which(par1$julian == 153)[1], c("month","day")],
               sep = "/",
               collapse = "/")
@@ -213,10 +375,13 @@ text(x = day.deriv.0,y = -35,
      labels = date1,
      pos = 4)
 
+```
+
 
 
 
 #plot 1st day when deriv not sig different from zero
+```{r}
 day.deriv.0b <- x.mesh[which((df+2*df.sd)> 0)[1]]
 abline(v = day.deriv.0b, col = col.x+1, lty = lty.x +1)
 text(x = day.deriv.0b-10,y = -30,
@@ -229,11 +394,13 @@ date2 <- paste(date2,"2016",sep = "/",
 text(x = day.deriv.0b-20,y = -35,
      col = 4,
      labels = date2,pos=4)
+```
 
 
 
-## turn off device for plotting
-dev.off()
+## References
+
+Wood, S.N.  2006.  Generalized Additive Models: An Introduction with R. Chapman and Hall/CRC.
 
 
 
