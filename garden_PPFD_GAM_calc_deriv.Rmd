@@ -55,7 +55,8 @@ qplot(y = PAR,
           data = par1,
       color = hour)  +
   theme_bw() +
-   xlab("Date")
+   xlab("Date (Days since January 1st)") +
+  ylab("Light levels (PAR)")
 ```
 
 
@@ -70,8 +71,8 @@ qplot(y = mean,
           data = par.mean) +
     geom_errorbar((aes(ymin = mean-2*SE, 
                        ymax = mean+2*SE))) +
-  theme_bw() + ylab("Mid-day mean PPFD") +
-   xlab("Date")
+  theme_bw() + ylab("Light levels (Mid-day mean PPFD)") +
+   xlab("Date (Days since January 1st)")
 ```
 
 ggplot is very flexible and can actually call the mgcv library and fit a GAM on the fly.  Note that I removed "smooth" from the call to geom = within qplot and added stat_smooth() at the end.  The default for stat_smooth() is LOESS so we change it to GAM and specify the formula.  (Note that without the "formula = y ~ s(x)" the default for stat_smooth(), even with method = "gam", is to fit a linear regression.)
@@ -83,7 +84,9 @@ qplot(y = mean,
           data = par.mean) +
     geom_errorbar((aes(ymin = mean-2*SE, 
                        ymax = mean+2*SE)))  +
-  stat_smooth(method = "gam", formula = y ~ s(x), size = 1)
+  stat_smooth(method = "gam", formula = y ~ s(x), size = 1) + xlab("Date (Days since January 1st)") +
+ ylab("Light levels (Mid-day mean PPFD)") +
+  theme_bw()
 ```
 
 For more information on stat_smooth() see https://stats.idre.ucla.edu/r/faq/how-can-i-explore-different-smooths-in-ggplot2/
@@ -299,24 +302,20 @@ df.sd <- rowSums(Xi%*%gam1$Vp*Xi)^.5 ## cheap diag(Xi%*%b$Vp%*%t(Xi))^.5
 
 
 
-### Plot derivative & CI for line ###
+### Plot derivative & CI for line 
 
 #### Main plot
+
 ```{r}
 plot(x.mesh,df,
      type="l",
      ylim=range(c(df+2*df.sd,df-2*df.sd)),
-     xlab = "Julian Date",
-     ylab = "Derivative")
-```
+     xlab = "Date (Days since Jan. 1)",
+     ylab = "Derivative of GAM line")
 
-
-#### Plot 95%CI of derivative
-```{r}
+# Plot 95%CI of derivative
 lines(x.mesh,df+2*df.sd,lty=2);lines(x.mesh,df-2*df.sd,lty=2)
-```
 
-```{r}
 leg <- c("GAM\nderivative\n",
          "95% CI",
          "Deriv = 0",
@@ -331,20 +330,16 @@ legend("topright",bty = "n",#cex = 0.9,
        cex = 0.9,
        lty = c(1,2,1,lty.x,lty.x +1),
        col = c(1,1,2,col.x,col.x+1),inset=c(-0.385,0))
-```
 
 
-
-```{r}
 abline(h = 0, col = 2)
 
-```
 
 
 ## plot deriv = 0 horizontal line 
 
 ## plot 1st day when deriv = 0
-```{r}
+
 day.deriv.0 <- x.mesh[which(df> 0)[1]]
 abline(v = day.deriv.0, col =col.x, lty = lty.x)
 
@@ -352,10 +347,8 @@ text(x = day.deriv.0,y = -30,
      col = 3,
      labels = round(day.deriv.0,0),
      pos = 4)
-```
 
 
-```{r}
 date1 <-paste(par1[which(par1$julian == 153)[1], c("month","day")],
               sep = "/",
               collapse = "/")
@@ -367,14 +360,9 @@ text(x = day.deriv.0,y = -35,
      labels = date1,
      pos = 4)
 
-```
+# plot 1st day when deriv not sig different from zero
 
 
-
-
-## plot 1st day when deriv not sig different from zero
-
-```{r}
 day.deriv.0b <- x.mesh[which((df+2*df.sd)> 0)[1]]
 abline(v = day.deriv.0b, col = col.x+1, lty = lty.x +1)
 text(x = day.deriv.0b-10,y = -30,
