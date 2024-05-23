@@ -37,6 +37,7 @@ par1 <- read.csv("./data/garden_sensor_data_cleaned.csv")
 
 #### Load summarized data
 Load garden data that has been summarized by mid-day mean for plotting exploratory graph.
+
 ```{r}
 par.mean <- read.csv("./data/garden_sensor_data_10amTo2pm_mean.csv")
 ```
@@ -61,6 +62,7 @@ qplot(y = PAR,
 ### Plot daily means
 
 We can fit a LOESS smoother using geom = "smooth" or stat_smooth().
+
 ```{r}
 qplot(y = mean,
         x = (julian),
@@ -88,21 +90,22 @@ For more information on stat_smooth() see https://stats.idre.ucla.edu/r/faq/how-
 
 ## Model Summaried Data w/GAM
 
-I use Generalized Addidive Model (GAM; Wood 2006) to model how PAR decreases with time. This could be fanicer by adding autocorrelation (eg AR1) to the errors but I don't think that accomplished anything really.
+I use a Generalized Additive Model (GAM; Wood 2006) to model how PAR decreases with time. This could be fanicer by adding autocorrelation (eg AR1) to the errors but I don't think that accomplished anything really.
 
-Also, instead of means for 10 AM to 2 PM we could directly model the raw data with random effects with a GAMM (Generalized Additive Mixed Model), but that wouldn't add anything to the anlysis.
+Also, instead of means for 10 AM to 2 PM we could directly model the raw data with random effects with a GAMM (Generalized Additive Mixed Model), but that wouldn't add anything to the analysis.
 
 
 
 ### Run the GAM
 
-The notation s(julian) tells the model to build a smoother for the covariation "julian".
+The notation `s(julian)` tells the model to build a smoother for the covariate "julian".
+
 ```{r}
 gam1 <- gam(mean ~ s(julian), data = par.mean)
 
 ```
 
-The mgcv library has some basic plotting functionality using the plot() function.  See ?plot.gam for the full details.  The band around the fitted line is the standard error (SE).
+The `mgcv` library has some basic plotting functionality using the `plot()` function.  See `?plot.gam` for the full details.  The band around the fitted line is the standard error (SE).
 
 ```{r}
 plot(gam1)
@@ -126,37 +129,38 @@ par.mean$preds <- preds.out
 
 ## Differentiating the smooths in a model (with CIs for derivatives)
 
-I can't remember whether I discovered that you could calculate derivatives for GAMs by reading the help file then discovered this guy's blog, or found the blog first (I'd prefer the former).
+I can't remember whether I discovered that you could calculate derivatives for GAMs by reading the help file, then discovered this guy's blog, or found the blog first (I'd prefer the former).
 
 From the Bottom of The Heap Blog by Gavin Simpson who ask the questions "How do we identify where in the series the data are changing?"
 
-Original
+Original blog posted:
 https://www.fromthebottomoftheheap.net/2014/06/16/simultaneous-confidence-intervals-for-derivatives/
 
 Update on the simultaneous CI issue
 https://www.fromthebottomoftheheap.net/2016/12/15/simultaneous-interval-revisited/
 
-Andd on the GAM issue
+And on the GAM issue
 https://www.fromthebottomoftheheap.net/2017/03/21/simultaneous-intervals-for-derivatives-of-smooths/
 
 He now has a function to do this
 https://gist.github.com/gavinsimpson/e73f011fdaaab4bb5a30
 
 
-THe function can be accessed by downloading the tsgam package from GitHub, or by copying and pasting the function directly into an R file.
+The function can be accessed by downloading the `tsgam` package from GitHub, or by copying and pasting the function directly into an R file.
+
 ```{r}
 devtools::install_github("gavinsimpson/tsgam")
 
 ```
 
 
-Function is called "Deriv"
+The function is called `Deriv` and is also in this packages `\R` folder.
 ```{r}
 #https://gist.github.com/gavinsimpson/e73f011fdaaab4bb5a30
 source("./R/Deriv.R")
 ```
 
-The derivative function has the key arguements (with their defaults):
+The derivative function has these key arguments (with their defaults):
 
 * mod: the model
 * eps = 1e-7: "the value of the finite difference used to approximate the first derivative."
@@ -170,11 +174,10 @@ https://stackoverflow.com/questions/14207250/determining-derivatives-from-gam-sm
 
 
 ```{r}
-deriv.from.fderiv <- fderiv(gam1)
-
+deriv.from.fderiv <- Deriv(gam1)
 ```
 
-He's linked his confidence interval functionality directly to R's confint() function
+He's linked his confidence interval functionality directly to R's `confint()` function
 
 ```{r}
 CIs.from.confint <- confint(deriv.from.fderiv, type = "simultaneous")
@@ -204,12 +207,12 @@ ggplot(data = out,
 
 Calculate derivative of the GAM smooth
 
-* see ?predict.gam for original code 
+* see `?predict.gam` for original code 
 * the following code notes are copied from there with some additional notes by NLB
 
 "evaluate derivatives of smooths with associated standard errors, by finite differencing..."
 
-## set up values to make predictions accross
+## Set up values to make predictions accross
 
 When making predictions using a fitted model the default is to use the original dataframe.  This 
 
@@ -221,8 +224,6 @@ x.mesh <- seq(min(par.mean$julian),
 
 
 ```{r}
-
-
 newd <- data.frame(julian = x.mesh)
 X0 <- predict(gam1,newd,type="lpmatrix") 
 ```
@@ -230,8 +231,7 @@ X0 <- predict(gam1,newd,type="lpmatrix")
 
 
 
-set up value to perturb data by to approx the differentiation
-"finite difference interval to approximate differenatiation"
+Set up value to perturb data by to approx the differentiation "finite difference interval to approximate differenatiation"
 ```{r}
 eps <- 1e-7 
 ```
@@ -240,7 +240,6 @@ eps <- 1e-7
 Shift the evaluation mesh
 ```{r}
 x.mesh <- x.mesh + eps 
-
 ```
 
 
@@ -266,15 +265,8 @@ colnames(temp) <- gsub("Intercept","In",colnames(temp))
 head(temp)
 ```
 
-From original model:
 
-#    (Int) s(j).1 s(j).2 s(j).3 s(j).4 s(j).5 s(j).6 s(j).7 s(j).8 s(j).9
-# 1    1  -1.11  -0.26   1.39  -0.35   1.51   0.41  -1.57  -1.12  -1.71
-# 2    1  -1.11  -0.24   1.39  -0.33   1.51   0.39  -1.57  -1.08  -1.67
-# 3    1  -1.11  -0.23   1.38  -0.31   1.51   0.37  -1.57  -1.04  -1.63
-# 4    1  -1.11  -0.21   1.38  -0.29   1.50   0.35  -1.56  -0.99  -1.58
-# 5    1  -1.11  -0.20   1.38  -0.28   1.49   0.32  -1.55  -0.95  -1.54
-# 6    1  -1.11  -0.19   1.38  -0.26   1.48   0.29  -1.52  -0.90  -1.50
+
 
 
 Divide perturbed and original coefficients 
@@ -349,9 +341,9 @@ abline(h = 0, col = 2)
 ```
 
 
-#plot deriv = 0 horizontal line 
+## plot deriv = 0 horizontal line 
 
-#plot 1st day when deriv = 0
+## plot 1st day when deriv = 0
 ```{r}
 day.deriv.0 <- x.mesh[which(df> 0)[1]]
 abline(v = day.deriv.0, col =col.x, lty = lty.x)
@@ -380,7 +372,8 @@ text(x = day.deriv.0,y = -35,
 
 
 
-#plot 1st day when deriv not sig different from zero
+## plot 1st day when deriv not sig different from zero
+
 ```{r}
 day.deriv.0b <- x.mesh[which((df+2*df.sd)> 0)[1]]
 abline(v = day.deriv.0b, col = col.x+1, lty = lty.x +1)
